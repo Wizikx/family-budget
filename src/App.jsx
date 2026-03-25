@@ -296,19 +296,31 @@ export default function App(){
   const saving=useRef(false);
   const dark = theme === "dark";
 
+  // Helper: Firebase converts arrays to objects, so we convert back
+  function fixData(val) {
+    const d = { ...val };
+    if (d.expenses && !Array.isArray(d.expenses)) d.expenses = Object.values(d.expenses);
+    if (!d.expenses) d.expenses = [];
+    if (d.members && !Array.isArray(d.members)) d.members = Object.values(d.members);
+    if (!d.members) d.members = [];
+    if (!d.budget) d.budget = 50000;
+    if (!d.goal) d.goal = 10000;
+    if (!d.warn) d.warn = 80;
+    return d;
+  }
+
   // Load: listen for realtime changes from Firebase
   useEffect(()=>{
     const dbRef=ref(db,"budget");
     const unsub=onValue(dbRef,(snap)=>{
       if(saving.current) return;
       const val=snap.val();
-      if(val){const d={...val,expenses:val.expenses?Object.values(val.expenses):[]};setData(d);if(val.theme)setTheme(val.theme);}
+      if(val){const d=fixData(val);setData(d);if(val.theme)setTheme(val.theme);}
       else setData({members:[],expenses:[],budget:50000,goal:10000,warn:80});
       ok.current=true;
     },(err)=>{
       console.error(err);
-      // fallback to localStorage
-      try{const raw=localStorage.getItem("fam-budget-fb");if(raw){const d=JSON.parse(raw);setData(d);if(d.theme)setTheme(d.theme);}else setData({members:[],expenses:[],budget:50000,goal:10000,warn:80});}
+      try{const raw=localStorage.getItem("fam-budget-fb");if(raw){const d=fixData(JSON.parse(raw));setData(d);if(d.theme)setTheme(d.theme);}else setData({members:[],expenses:[],budget:50000,goal:10000,warn:80});}
       catch{setData({members:[],expenses:[],budget:50000,goal:10000,warn:80});}
       ok.current=true;
     });
@@ -318,8 +330,11 @@ export default function App(){
   // Save: write to Firebase + localStorage backup
   useEffect(()=>{if(!ok.current||!data)return;
     const payload={...data,theme};
+    // Convert arrays to objects for Firebase (prevents index-based keys)
+    const fbData={...payload};
+    if(Array.isArray(fbData.expenses)){const obj={};fbData.expenses.forEach(e=>{obj[e.id||uid()]=e;});fbData.expenses=obj;}
+    if(Array.isArray(fbData.members)){const obj={};fbData.members.forEach(m=>{obj[m.id||uid()]=m;});fbData.members=obj;}
     saving.current=true;
-    const fbData={...payload};if(Array.isArray(fbData.expenses)){const obj={};fbData.expenses.forEach((e,i)=>{obj[e.id||i]=e;});fbData.expenses=obj;}
     set(ref(db,"budget"),fbData).then(()=>{saving.current=false;}).catch(()=>{saving.current=false;});
     try{localStorage.setItem("fam-budget-fb",JSON.stringify(payload));}catch{}
   },[data,theme]);
