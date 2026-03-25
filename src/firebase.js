@@ -1,9 +1,6 @@
-// Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { getDatabase } from "firebase/database";
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyCMXzYKMdMrC1Y-P1US5iGT468SYh8DC1g",
   authDomain: "family-budget-f21f1.firebaseapp.com",
@@ -14,5 +11,5 @@ const firebaseConfig = {
   appId: "1:377570587401:web:0d3c05dcb9429593dad9d8"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
+export const db = getDatabase(app);
