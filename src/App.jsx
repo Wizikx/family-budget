@@ -302,7 +302,7 @@ export default function App(){
     const unsub=onValue(dbRef,(snap)=>{
       if(saving.current) return;
       const val=snap.val();
-      if(val){setData(val);if(val.theme)setTheme(val.theme);}
+      if(val){const d={...val,expenses:val.expenses?Object.values(val.expenses):[]};setData(d);if(val.theme)setTheme(val.theme);}
       else setData({members:[],expenses:[],budget:50000,goal:10000,warn:80});
       ok.current=true;
     },(err)=>{
@@ -319,7 +319,8 @@ export default function App(){
   useEffect(()=>{if(!ok.current||!data)return;
     const payload={...data,theme};
     saving.current=true;
-    set(ref(db,"budget"),payload).then(()=>{saving.current=false;}).catch(()=>{saving.current=false;});
+    const fbData={...payload};if(Array.isArray(fbData.expenses)){const obj={};fbData.expenses.forEach((e,i)=>{obj[e.id||i]=e;});fbData.expenses=obj;}
+    set(ref(db,"budget"),fbData).then(()=>{saving.current=false;}).catch(()=>{saving.current=false;});
     try{localStorage.setItem("fam-budget-fb",JSON.stringify(payload));}catch{}
   },[data,theme]);
 
