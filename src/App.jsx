@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, createContext, useContext } from "react";
-import { db } from "./firebase";
+import { db, auth } from "./firebase";
 import { ref, onValue, set } from "firebase/database";
+import { onAuthStateChanged } from "firebase/auth";
 
 /* ═══ Theme Context ═══ */
 const ThemeCtx = createContext();
@@ -309,22 +310,27 @@ export default function App(){
     return d;
   }
 
-  // Load: listen for realtime changes from Firebase
+  // Wait for auth, then load data from Firebase
   useEffect(()=>{
-    const dbRef=ref(db,"budget");
-    const unsub=onValue(dbRef,(snap)=>{
-      if(saving.current) return;
-      const val=snap.val();
-      if(val){const d=fixData(val);setData(d);if(val.theme)setTheme(val.theme);}
-      else setData({members:[],expenses:[],budget:50000,goal:10000,warn:80});
-      ok.current=true;
-    },(err)=>{
-      console.error(err);
-      try{const raw=localStorage.getItem("fam-budget-fb");if(raw){const d=fixData(JSON.parse(raw));setData(d);if(d.theme)setTheme(d.theme);}else setData({members:[],expenses:[],budget:50000,goal:10000,warn:80});}
-      catch{setData({members:[],expenses:[],budget:50000,goal:10000,warn:80});}
-      ok.current=true;
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      if (!user) return; // still signing in
+      const dbRef=ref(db,"budget");
+      const unsub=onValue(dbRef,(snap)=>{
+        if(saving.current) return;
+        const val=snap.val();
+        if(val){const d=fixData(val);setData(d);if(val.theme)setTheme(val.theme);}
+        else setData({members:[],expenses:[],budget:50000,goal:10000,warn:80});
+        ok.current=true;
+      },(err)=>{
+        console.error(err);
+        try{const raw=localStorage.getItem("fam-budget-fb");if(raw){const d=fixData(JSON.parse(raw));setData(d);if(d.theme)setTheme(d.theme);}else setData({members:[],expenses:[],budget:50000,goal:10000,warn:80});}
+        catch{setData({members:[],expenses:[],budget:50000,goal:10000,warn:80});}
+        ok.current=true;
+      });
+      // cleanup db listener when auth changes
+      return ()=> unsub();
     });
-    return()=>unsub();
+    return ()=> unsubAuth();
   },[]);
 
   // Save: write to Firebase + localStorage backup
@@ -368,7 +374,7 @@ export default function App(){
 
   return(
     <ThemeCtx.Provider value={dark}>
-    <div className={dark?"dark":""} style={{minHeight:"100vh",background:"var(--bg0)",paddingBottom:90,color:"var(--t1)",transition:"background .3s, color .3s"}}>
+    <div className={dark?"dark":""} style={{minHeight:"100vh",background:"var(--bg0)",paddingBottom:100,color:"var(--t1)",transition:"background .3s, color .3s"}}>
       <style>{CSS}</style>
 
       <header className="header">
@@ -385,7 +391,6 @@ export default function App(){
           {data.members.map(m=>{const p=gp(m);const s=fM===m.id;
             return <button key={m.id} title={m.name} onClick={()=>setFM(fM===m.id?"all":m.id)} style={{width:36,height:36,borderRadius:12,background:s?p.accent:p.bg,color:s?"#fff":p.text,display:"grid",placeItems:"center",fontSize:12,fontWeight:700,border:"none",cursor:"pointer",boxShadow:s?`0 4px 12px ${p.accent}44`:"none",transition:"all .25s"}}>{m.name.slice(0,2).toUpperCase()}</button>;
           })}
-          <button onClick={()=>setStOpen(true)} className="btn-icon">⚙</button>
         </div>
       </header>
 
@@ -393,13 +398,7 @@ export default function App(){
         <input type="month" value={fMo} onChange={e=>setFMo(e.target.value)} className="month-input"/>
         {fM!=="all"&&(()=>{const m=gm(fM),p=gp(m);return <span className="filter-badge" style={{background:p.bg,color:p.text}}>{m.name}<button onClick={()=>setFM("all")} style={{background:"none",border:"none",cursor:"pointer",color:p.text,fontSize:13,padding:0,marginLeft:4}}>✕</button></span>;})()}
       </div>
-      <div style={{padding:"0 20px 12px"}}>
-        <div className="tab-bar">
-          {[["dashboard","Дашборд"],["list","Записи"],["analytics","Анализ"]].map(([id,lb])=>(
-            <button key={id} onClick={()=>setTab(id)} className={`tab-btn${tab===id?" active":""}`}>{lb}</button>
-          ))}
-        </div>
-      </div>
+      <div style={{padding:"0 20px 12px"}}></div>
 
       <div style={{padding:"0 20px"}} className="content">
 
@@ -509,7 +508,28 @@ export default function App(){
         </div>}
       </div>
 
-      <button onClick={()=>setAddOpen(true)} className="fab">+</button>
+      {/* ── Bottom Tab Bar ── */}
+      <nav className="bottom-bar">
+        <button onClick={()=>setTab("dashboard")} className={`btab${tab==="dashboard"?" active":""}`}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          <span>Дашборд</span>
+        </button>
+        <button onClick={()=>setTab("list")} className={`btab${tab==="list"?" active":""}`}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          <span>Записи</span>
+        </button>
+        <button onClick={()=>setAddOpen(true)} className="btab-add">
+          <span>+</span>
+        </button>
+        <button onClick={()=>setTab("analytics")} className={`btab${tab==="analytics"?" active":""}`}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          <span>Анализ</span>
+        </button>
+        <button onClick={()=>setStOpen(true)} className="btab">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Ещё</span>
+        </button>
+      </nav>
 
       <Modal open={addOpen} onClose={()=>setAddOpen(false)} title="Новая запись">
         <ExpenseForm members={data.members} onClose={()=>setAddOpen(false)} onSave={e=>setData(pr=>({...pr,expenses:[{...e,id:uid(),createdAt:Date.now()},...pr.expenses]}))}/>
@@ -572,9 +592,12 @@ input:focus{border-color:var(--accent) !important;box-shadow:0 0 0 3px var(--acc
 
 .filter-badge{padding:7px 14px;border-radius:12px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:4px;}
 
-.tab-bar{display:inline-flex;gap:4px;background:var(--card);border-radius:16px;padding:4px;box-shadow:var(--card-sh);transition:background .3s;}
-.tab-btn{padding:10px 20px;border-radius:12px;border:none;cursor:pointer;font-weight:700;font-size:13px;white-space:nowrap;background:transparent;color:var(--t3);transition:all .25s;}
-.tab-btn.active{background:var(--accent);color:#fff;box-shadow:0 2px 8px var(--accent-glow);}
+.bottom-bar{position:fixed;bottom:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-around;background:var(--card);border-top:1px solid var(--border);padding:6px 0 env(safe-area-inset-bottom,8px);transition:background .3s;}
+.btab{display:flex;flex-direction:column;align-items:center;gap:2px;background:none;border:none;cursor:pointer;color:var(--t3);font-size:10px;font-weight:600;font-family:inherit;padding:4px 12px;transition:color .2s;-webkit-tap-highlight-color:transparent;}
+.btab.active{color:var(--accent);}
+.btab span{margin-top:1px;}
+.btab-add{width:48px;height:48px;border-radius:16px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-size:28px;font-weight:300;display:grid;place-items:center;box-shadow:0 4px 16px var(--accent-glow);margin-top:-20px;transition:transform .2s;}
+.btab-add:active{transform:scale(.9);}
 
 .stack{display:flex;flex-direction:column;gap:14px;}
 .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}
@@ -588,15 +611,10 @@ input:focus{border-color:var(--accent) !important;box-shadow:0 0 0 3px var(--acc
 .accent-card{background:var(--accent) !important;box-shadow:0 4px 20px var(--accent-glow) !important;}
 .accent-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;margin-top:4px;padding:3px 8px;border-radius:8px;background:rgba(255,255,255,.2);color:#fff;font-weight:600;}
 
-.fab{position:fixed;bottom:24px;right:24px;width:58px;height:58px;border-radius:18px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-size:30px;font-weight:300;box-shadow:0 6px 24px var(--accent-glow);display:grid;place-items:center;z-index:90;transition:transform .2s,box-shadow .2s;}
-.fab:hover{transform:translateY(-2px);box-shadow:0 8px 28px var(--accent-glow);}
-.fab:active{transform:scale(.95);}
-
 @media(max-width:480px){
   .stat-value{font-size:22px;}
   .grid3{grid-template-columns:1fr;}
   .header{padding:12px 16px;}
   .content{padding:0 16px !important;}
-  .fab{bottom:18px;right:18px;width:52px;height:52px;border-radius:16px;font-size:26px;}
 }
 `;
